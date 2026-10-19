@@ -25,7 +25,20 @@ $('pushSetup').onclick=async()=>{
  try{
    const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
    await navigator.serviceWorker.ready;
-   status.textContent='通知の受信準備はできました。現在、サーバーからの自動送信機能を設定中です。';
+   const config=await fetch('https://ivhgdchqdbgudbyfbfhs.supabase.co/functions/v1/weekly-planner-push');
+   if(!config.ok){status.textContent='通知サーバーの設定はまだ完了していません。設定完了後にもう一度お試しください。';return;}
+   const {publicKey}=await config.json();
+   if(!publicKey)throw Error('通知公開鍵がありません');
+   const permission=await Notification.requestPermission();
+   if(permission!=='granted'){status.textContent='通知が許可されていません。端末の通知設定を確認してください。';return;}
+   const bytes=(base64)=>Uint8Array.from(atob(base64.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-base64.length%4)%4)),c=>c.charCodeAt(0));
+   let sub=await reg.pushManager.getSubscription();
+   if(sub&&sub.options?.applicationServerKey&&Array.from(new Uint8Array(sub.options.applicationServerKey)).join(',')!==Array.from(bytes(publicKey)).join(',')){await sub.unsubscribe();sub=null}
+   if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes(publicKey)});
+   const j=sub.toJSON();
+   const {error}=await client.from('weekly_planner_push_subscriptions').upsert({user_id:user.id,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth_secret:j.keys.auth},{onConflict:'endpoint'});
+   if(error)throw error;
+   status.textContent='この端末の通知登録が完了しました。自動送信の稼働確認は別途必要です。';
  }catch(e){status.textContent='通知の準備に失敗しました：'+(e.message||String(e))}
 };
 $('export').onclick=()=>{let keys=['project_name','description','start_date','end_date','planned_start','planned_end','actual_start','actual_end','subtract_lunch','completed'];let q=v=>'"'+String(v??'').replaceAll('"','""')+'"';let csv='\ufeff'+[keys.join(','),...tasks.map(t=>keys.map(k=>q(t[k])).join(','))].join('\r\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='weekly_planner_tasks.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
