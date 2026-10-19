@@ -3,7 +3,7 @@ self.addEventListener('push',event=>{
  let payload={title:'週間予定表',body:'開始予定のタスクがあります',url:'./'};
  try{if(event.data)payload={...payload,...event.data.json()}}catch{}
  const title=String(payload.title||'週間予定表').slice(0,100);
- const options={body:String(payload.body||'').slice(0,250),tag:String(payload.tag||'weekly-planner'),renotify:false,icon:'./icon-192.png',data:{url:payload.url||'./'}};
+ const options={body:String(payload.body||'').slice(0,250),tag:String(payload.tag||'weekly-planner'),renotify:false,data:{url:payload.url||'./'}};
  event.waitUntil(self.registration.showNotification(title,options));
 });
 self.addEventListener('notificationclick',event=>{
