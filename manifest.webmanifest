@@ -1,0 +1,12 @@
+{
+  "id": "./",
+  "name": "週間業務予定表",
+  "short_name": "週間予定表",
+  "description": "物件別の週間作業予定とガントチャート",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef3f8",
+  "theme_color": "#184768",
+  "lang": "ja"
+}
