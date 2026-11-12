@@ -12,10 +12,10 @@ function nthWeekday(y,m,weekday,n){let d=new Date(y,m-1,1);return 1+(weekday-d.g
 function reset(){editId=null;$('form').reset();$('formTitle').textContent='作業を追加・編集';$('form').elements.start_date.value=$('week').value;$('form').elements.end_date.value=$('week').value;updateDateWeekdays();renderDailyInputs()}
 const timeChoices=Array.from({length:48},(_,i)=>{let h=String(Math.floor(i/2)).padStart(2,'0'),m=i%2?'30':'00';return h+':'+m});function populateTimeSelect(sel,value=''){sel.replaceChildren(new Option('時刻を選択',''));for(const t of timeChoices)sel.add(new Option(t,t));if(value&&!timeChoices.includes(value)){sel.add(new Option(value+'（既存値）',value))}sel.value=value||''}document.querySelectorAll('select[data-time-select]').forEach(el=>populateTimeSelect(el));
 function renderDailyInputs(){let f=$('form').elements,s=f.start_date.value,e=f.end_date.value;if(!s||!e||e<s)return;let n=Math.min(366,Math.round((date(e)-date(s))/86400000)+1);for(let [mode,container,prefix,label] of [['planned_time_mode','plannedDaily','planned','予定'],['actual_time_mode','actualDaily','actual','実行']]){let box=$(container),active=f[mode].value==='daily';f[prefix+'_start'].required=!active&&prefix==='planned';f[prefix+'_end'].required=!active&&prefix==='planned';box.classList.toggle('hidden',!active);box.replaceChildren();if(!active)continue;for(let i=0;i<n;i++){let d=add(s,i);if(!isIncludedDay(d,f))continue;let row=document.createElement('div');row.className='daily-row';let title=document.createElement('b');title.textContent=d+'（'+label+'）';row.append(title);for(let [part,caption] of [['start','開始'],['end','終了']]){let lab=document.createElement('label');lab.textContent=caption;let inp=document.createElement('select');inp.dataset.timeSelect='daily';inp.dataset.daily=prefix;inp.dataset.date=d;inp.dataset.part=part;inp.required=false;let existing=JSON.parse(f[prefix+'_daily_times'].value||'{}');populateTimeSelect(inp,existing[d]?(existing[d][part]||''):(part==='start'?f[prefix+'_start'].value:f[prefix+'_end'].value)||'');lab.append(inp);row.append(lab)}box.append(row)}}}for(let p of ['planned','actual']){let h=document.createElement('input');h.type='hidden';h.name=p+'_daily_times';$('form').append(h)}for(let id of ['start_date','end_date'])$('form').elements[id].addEventListener('change',()=>{updateDateWeekdays();renderDailyInputs()});updateDateWeekdays();for(let id of ['planned_time_mode','actual_time_mode','include_saturday','include_sunday','include_holidays'])$('form').elements[id].addEventListener('change',renderDailyInputs);
-async function load(){if(!user)return;$('status').textContent='同期中…';let {data,error}=await client.from('weekly_planner_tasks').select('*').eq('user_id',user.id).order('start_date');if(error){$('status').textContent='同期失敗';fail(error);return}tasks=data.map(t=>{const hm=v=>typeof v==='string'?v.slice(0,5):v;for(let k of['planned_start','planned_end','actual_start','actual_end'])if(t[k])t[k]=hm(t[k]);for(let p of['planned','actual']){let d=t[p+'_daily_times'];if(d&&typeof d==='object')for(let day of Object.values(d)){if(day){if(day.start)day.start=hm(day.start);if(day.end)day.end=hm(day.end)}}}return t});if(data.length===0){$('status').textContent=`同期済み：${user.email||'メール不明'} ／ 0件。PCと同じアカウントか確認してください。`}else{$('status').textContent=`同期済み：${user.email||'メール不明'} ／ ${data.length}件`;}render()}
+async function load(){if(!user)return;$('status').textContent='同期中…';let {data,error}=await client.from('weekly_planner_tasks').select('*').eq('user_id',user.id).order('start_date');if(error){$('status').textContent='同期失敗';fail(error);return}tasks=data.map(t=>{const hm=v=>typeof v==='string'?v.slice(0,5):v;for(let k of['planned_start','planned_end','actual_start','actual_end'])if(t[k])t[k]=hm(t[k]);for(let p of['planned','actual']){let d=t[p+'_daily_times'];if(d&&typeof d==='object')for(let day of Object.values(d)){if(day){if(day.start)day.start=hm(day.start);if(day.end)day.end=hm(day.end)}}}return t});try{const syncChanged=await reconcileMgmtSync();if(syncChanged){const r2=await client.from('weekly_planner_tasks').select('*').eq('user_id',user.id).order('start_date');if(!r2.error){tasks=r2.data.map(t=>{const hm=v=>typeof v==='string'?v.slice(0,5):v;for(let k of['planned_start','planned_end','actual_start','actual_end'])if(t[k])t[k]=hm(t[k]);for(let p of['planned','actual']){let d=t[p+'_daily_times'];if(d&&typeof d==='object')for(let day of Object.values(d)){if(day){if(day.start)day.start=hm(day.start);if(day.end)day.end=hm(day.end)}}}return t});data=r2.data}}}catch(e){console.error('mgmt reconcile error',e)}if(tasks.length===0){$('status').textContent=`同期済み：${user.email||'メール不明'} ／ 0件。PCと同じアカウントか確認してください。`}else{$('status').textContent=`同期済み：${user.email||'メール不明'} ／ ${data.length}件`;}render()}
 function render(){updateWeekDateDisplay();let week=$('week').value,days=Array.from({length:7},(_,i)=>add(week,i)),today=ds(new Date());const palette=['#2474a6','#8b5fbf','#218c74','#c56b22','#c04466','#5c6bc0','#657b35','#a34f2d','#247f8e','#8c5e24'];const projectNames=[...new Set(tasks.map(t=>String(t.project_name||'（物件名なし）')))].sort((a,b)=>a.localeCompare(b,'ja'));const projectColor=name=>palette[Math.max(0,projectNames.indexOf(String(name||'（物件名なし）')))%palette.length];let shown=tasks.filter(t=>t.start_date<=days[6]&&t.end_date>=days[0]).sort((a,b)=>{let day=a.start_date.localeCompare(b.start_date);if(day)return day;let at=(a.planned_daily_times||{})[a.start_date]?.start||a.planned_start||'99:99';let bt=(b.planned_daily_times||{})[b.start_date]?.start||b.planned_start||'99:99';return at.localeCompare(bt)||String(a.project_name||'').localeCompare(String(b.project_name||''),'ja')});let head=document.createElement('tr');['完了','物件名','作業内容','予定時間','実行時間','時間差・状態',...days.map((d,i)=>'月火水木金土日'[i]+' '+d.slice(5)),'操作'].forEach((x,i)=>{let th=document.createElement('th');th.textContent=x;if(i>=6&&i<=12&&days[i-6]===today)th.classList.add('today-head');head.append(th)});$('thead').replaceChildren(head);$('tbody').replaceChildren();let plan=0,actual=0,done=0,overdue=0,soon=0,varianceTotal=0,varianceCount=0;
-for(let t of shown){let tr=document.createElement('tr'),td=cell(''),cb=document.createElement('input');cb.type='checkbox';cb.checked=t.completed;cb.onchange=async()=>{let {error}=await client.from('weekly_planner_tasks').update({completed:cb.checked}).eq('id',t.id).eq('user_id',user.id);if(error){cb.checked=!cb.checked;fail(error)}else load()};td.append(cb);tr.append(td,cell(t.project_name),cell(t.description));let p=taskDuration(t,'planned'),a=taskDuration(t,'actual');plan+=p||0;if(a!==null)actual+=a;done+=Number(t.completed);let diff=p!==null&&a!==null?a-p:null;if(diff!==null){varianceTotal+=diff;varianceCount++}let state='未着手',stateClass='';if(t.completed){state='完了';stateClass='status-done'}else if(t.end_date<today){state='期限超過';stateClass='deadline-overdue';overdue++}else if(t.end_date<=add(today,2)){state='納期間近';stateClass='deadline-soon';soon++}else if(a!==null){state='進行中'}let statusText=diff===null?state:`${diff>0?'+':''}${hours(diff)} ／ ${state}`;let statusCell=cell(statusText,stateClass+(diff!==null&&diff>0?' variance-over':''));statusCell.title=diff===null?'予定または実績の時間が未入力':'時間差＝実績－予定';tr.append(cell(fmt(p)),cell(fmt(a)),statusCell);for(let d of days){let active=d>=t.start_date&&d<=t.end_date&&isIncludedDay(d,{include_saturday:{checked:!!t.include_saturday},include_sunday:{checked:!!t.include_sunday},include_holidays:{checked:!!t.include_holidays}});let c=cell(active?(d===t.end_date?'▶':d===t.start_date?'●':'━'):'','day'+(active?' gantt'+(d===t.start_date?' gantt-start':'')+(d===t.end_date?' gantt-end':'' ):''));if(d===today)c.classList.add('today-col');if(active){c.style.backgroundColor=projectColor(t.project_name);c.style.color='#fff';c.title=t.project_name+'：'+t.start_date+'（'+weekday(t.start_date)+'）～'+t.end_date+'（'+weekday(t.end_date)+'）'+(t.completed?'（完了）':'');if(t.completed)c.style.opacity='.65';}tr.append(c)}let actions=cell('');actions.append(button('編集',()=>{editId=t.id;for(let [k,v] of Object.entries(t)){let f=$('form').elements.namedItem(k);if(f){if(f.type==='checkbox')f.checked=!!v;else f.value=typeof v==='boolean'?String(v):v??''}}for(let p of ['planned','actual']){$('form').elements[p+'_time_mode'].value=Object.keys(t[p+'_daily_times']||{}).length?'daily':'same';$('form').elements[p+'_daily_times'].value=JSON.stringify(t[p+'_daily_times']||{})}updateDateWeekdays();renderDailyInputs();$('formTitle').textContent='作業を編集';window.scrollTo(0,0)}),' ',button('削除',async()=>{if(!confirm('削除しますか？'))return;let {error}=await client.from('weekly_planner_tasks').delete().eq('id',t.id).eq('user_id',user.id);if(error)fail(error);else load()}));tr.append(actions);$('tbody').append(tr)}$('summary').replaceChildren();$('summary').append(document.createTextNode(`予定 ${fmt(plan)} ／ 実績入力済み合計 ${fmt(actual)} ／ 完了 ${done} / ${shown.length}件`));let note=document.createElement('small');note.className='summary-note';note.textContent=`期限超過 ${overdue}件 ／ 納期間近 ${soon}件 ／ 実績入力済み ${varianceCount}件の時間差合計 ${varianceTotal>0?'+':''}${hours(varianceTotal)}`;$('summary').append(note)}
-$('form').onsubmit=async e=>{e.preventDefault();let o=Object.fromEntries(new FormData(e.target));o.subtract_lunch=o.subtract_lunch==='true';for(let k of ['include_saturday','include_sunday','include_holidays'])o[k]=$('form').elements[k].checked;for(let p of ['planned','actual']){let mode=o[p+'_time_mode'],daily={};if(mode==='daily'){for(let inp of document.querySelectorAll('select[data-daily="'+p+'"]')){daily[inp.dataset.date]??={};daily[inp.dataset.date][inp.dataset.part]=inp.value}for(let [day,v] of Object.entries(daily)){if(Boolean(v.start)!==Boolean(v.end))return alert(day+'の'+(p==='planned'?'予定':'実行')+'時間は、開始・終了を両方入力するか、両方空欄にしてください');}o[p+'_daily_times']=daily;let first=Object.values(daily).find(v=>v.start&&v.end);o[p+'_start']=first?.start||null;o[p+'_end']=first?.end||null}else{o[p+'_daily_times']={}}delete o[p+'_time_mode']}if(o.end_date<o.start_date)return alert('終了日を確認してください');for(let [a,b,p] of [['planned_start','planned_end','planned'],['actual_start','actual_end','actual']]){if(!Object.keys(o[p+'_daily_times']||{}).length&&(Boolean(o[a])!==Boolean(o[b])))return alert('時刻の開始・終了を確認してください')}for(let k of ['actual_start','actual_end'])if(!o[k])o[k]=null;let q=editId?client.from('weekly_planner_tasks').update(o).eq('id',editId).eq('user_id',user.id):client.from('weekly_planner_tasks').insert({...o,user_id:user.id});let {error}=await q;if(error)return fail(error);reset();load()};$('cancel').onclick=reset;$('prev').onclick=()=>{$('week').value=add($('week').value,-7);render()};$('next').onclick=()=>{$('week').value=add($('week').value,7);render()};$('week').onchange=render;$('refresh').onclick=load;
+for(let t of shown){let tr=document.createElement('tr'),td=cell(''),cb=document.createElement('input');cb.type='checkbox';cb.checked=t.completed;cb.onchange=async()=>{let {error}=await client.from('weekly_planner_tasks').update({completed:cb.checked}).eq('id',t.id).eq('user_id',user.id);if(error){cb.checked=!cb.checked;fail(error)}else{await syncWeeklyToMgmt(t.id,{...t,completed:cb.checked});load()}};td.append(cb);tr.append(td,cell(t.project_name),cell(t.description));let p=taskDuration(t,'planned'),a=taskDuration(t,'actual');plan+=p||0;if(a!==null)actual+=a;done+=Number(t.completed);let diff=p!==null&&a!==null?a-p:null;if(diff!==null){varianceTotal+=diff;varianceCount++}let state='未着手',stateClass='';if(t.completed){state='完了';stateClass='status-done'}else if(t.end_date<today){state='期限超過';stateClass='deadline-overdue';overdue++}else if(t.end_date<=add(today,2)){state='納期間近';stateClass='deadline-soon';soon++}else if(a!==null){state='進行中'}let statusText=diff===null?state:`${diff>0?'+':''}${hours(diff)} ／ ${state}`;let statusCell=cell(statusText,stateClass+(diff!==null&&diff>0?' variance-over':''));statusCell.title=diff===null?'予定または実績の時間が未入力':'時間差＝実績－予定';tr.append(cell(fmt(p)),cell(fmt(a)),statusCell);for(let d of days){let active=d>=t.start_date&&d<=t.end_date&&isIncludedDay(d,{include_saturday:{checked:!!t.include_saturday},include_sunday:{checked:!!t.include_sunday},include_holidays:{checked:!!t.include_holidays}});let c=cell(active?(d===t.end_date?'▶':d===t.start_date?'●':'━'):'','day'+(active?' gantt'+(d===t.start_date?' gantt-start':'')+(d===t.end_date?' gantt-end':'' ):''));if(d===today)c.classList.add('today-col');if(active){c.style.backgroundColor=projectColor(t.project_name);c.style.color='#fff';c.title=t.project_name+'：'+t.start_date+'（'+weekday(t.start_date)+'）～'+t.end_date+'（'+weekday(t.end_date)+'）'+(t.completed?'（完了）':'');if(t.completed)c.style.opacity='.65';}tr.append(c)}let actions=cell('');actions.append(button('編集',()=>{editId=t.id;for(let [k,v] of Object.entries(t)){let f=$('form').elements.namedItem(k);if(f){if(f.type==='checkbox')f.checked=!!v;else f.value=typeof v==='boolean'?String(v):v??''}}for(let p of ['planned','actual']){$('form').elements[p+'_time_mode'].value=Object.keys(t[p+'_daily_times']||{}).length?'daily':'same';$('form').elements[p+'_daily_times'].value=JSON.stringify(t[p+'_daily_times']||{})}updateDateWeekdays();renderDailyInputs();$('formTitle').textContent='作業を編集';window.scrollTo(0,0)}),' ',button('削除',async()=>{if(!confirm('削除しますか？'))return;let {error}=await client.from('weekly_planner_tasks').delete().eq('id',t.id).eq('user_id',user.id);if(error)fail(error);else{await syncWeeklyDeleteToMgmt(t.id);load()}}));tr.append(actions);$('tbody').append(tr)}$('summary').replaceChildren();$('summary').append(document.createTextNode(`予定 ${fmt(plan)} ／ 実績入力済み合計 ${fmt(actual)} ／ 完了 ${done} / ${shown.length}件`));let note=document.createElement('small');note.className='summary-note';note.textContent=`期限超過 ${overdue}件 ／ 納期間近 ${soon}件 ／ 実績入力済み ${varianceCount}件の時間差合計 ${varianceTotal>0?'+':''}${hours(varianceTotal)}`;$('summary').append(note)}
+$('form').onsubmit=async e=>{e.preventDefault();let o=Object.fromEntries(new FormData(e.target));o.subtract_lunch=o.subtract_lunch==='true';for(let k of ['include_saturday','include_sunday','include_holidays'])o[k]=$('form').elements[k].checked;for(let p of ['planned','actual']){let mode=o[p+'_time_mode'],daily={};if(mode==='daily'){for(let inp of document.querySelectorAll('select[data-daily="'+p+'"]')){daily[inp.dataset.date]??={};daily[inp.dataset.date][inp.dataset.part]=inp.value}for(let [day,v] of Object.entries(daily)){if(Boolean(v.start)!==Boolean(v.end))return alert(day+'の'+(p==='planned'?'予定':'実行')+'時間は、開始・終了を両方入力するか、両方空欄にしてください');}o[p+'_daily_times']=daily;let first=Object.values(daily).find(v=>v.start&&v.end);o[p+'_start']=first?.start||null;o[p+'_end']=first?.end||null}else{o[p+'_daily_times']={}}delete o[p+'_time_mode']}if(o.end_date<o.start_date)return alert('終了日を確認してください');for(let [a,b,p] of [['planned_start','planned_end','planned'],['actual_start','actual_end','actual']]){if(!Object.keys(o[p+'_daily_times']||{}).length&&(Boolean(o[a])!==Boolean(o[b])))return alert('時刻の開始・終了を確認してください')}for(let k of ['actual_start','actual_end'])if(!o[k])o[k]=null;let q=editId?client.from('weekly_planner_tasks').update(o).eq('id',editId).eq('user_id',user.id):client.from('weekly_planner_tasks').insert({...o,user_id:user.id}).select().single();let {data:savedRow,error}=await q;if(error)return fail(error);const syncId=editId||(savedRow&&savedRow.id);if(syncId)await syncWeeklyToMgmt(syncId,{...o,completed:editId?!!(tasks.find(t=>t.id===editId)||{}).completed:false});reset();load()};$('cancel').onclick=reset;$('prev').onclick=()=>{$('week').value=add($('week').value,-7);render()};$('next').onclick=()=>{$('week').value=add($('week').value,7);render()};$('week').onchange=render;$('refresh').onclick=load;
 
 // Web Push is prepared but intentionally unavailable until server-side VAPID and delivery are configured.
 $('pushSetup').onclick=async()=>{
@@ -65,6 +65,128 @@ $('pushDisable').onclick=async()=>{
   status.textContent='この端末のプッシュ通知登録を解除しました。';
  }catch(e){status.textContent='解除できませんでした：'+(e.message||String(e))}
 };
+
+// ===== Task Management App (mgmt-app) との双方向同期 =====
+// 両アプリは同じ Supabase プロジェクト・同じ Auth ユーザーを使うため、
+// Task 側の tasks テーブルを直接読み書きする。紐づけは「同じ id」。
+// Task 側にしかない項目 (担当者・依存関係など) は触らない。
+// 同期に失敗しても週間予定表の保存自体は成功扱いにし、console に記録する。
+async function syncWeeklyToMgmt(id,o){
+  try{
+    const {data:ex}=await client.from('tasks').select('*').eq('id',id).eq('user_id',user.id).maybeSingle();
+    const payload={title:o.description||'',property_name:o.project_name||null,category:'work',
+      planned_start_date:o.start_date,planned_end_date:o.end_date,
+      planned_start_time:o.planned_start?String(o.planned_start).slice(0,5):null,
+      planned_end_time:o.planned_end?String(o.planned_end).slice(0,5):null,
+      planned_is_all_day:false,planned_time_period:'custom'};
+    if(o.completed){payload.status='done';payload.progress=100}
+    else if(ex){if(ex.status==='done'){payload.status='todo';payload.progress=0}}
+    else{payload.status='todo';payload.progress=0}
+    if(o.actual_start&&o.actual_end){payload.start_time=String(o.actual_start).slice(0,5);payload.end_time=String(o.actual_end).slice(0,5);payload.is_all_day=false;payload.time_period='custom'}
+    if(ex){
+      // 実績日が予定日と揃えて管理されている場合だけ、予定日の変更に追随させる
+      if(!ex.start_date||ex.start_date===ex.planned_start_date)payload.start_date=o.start_date;
+      if(!ex.end_date||ex.end_date===ex.planned_end_date)payload.end_date=o.end_date;
+      const {error}=await client.from('tasks').update(payload).eq('id',id).eq('user_id',user.id);
+      if(error)console.error('Task Management App sync (update) failed',error);
+    }else{
+      payload.user_id=user.id;payload.id=id;payload.start_date=o.start_date;payload.end_date=o.end_date;
+      if(!(o.actual_start&&o.actual_end)){payload.is_all_day=true;payload.time_period='all_day'}
+      const {error}=await client.from('tasks').insert(payload);
+      if(error)console.error('Task Management App sync (insert) failed',error);
+    }
+  }catch(e){console.error('Task Management App sync failed',e)}
+}
+async function syncWeeklyDeleteToMgmt(id){
+  try{
+    const {data:ch}=await client.from('tasks').select('id').eq('parent_task_id',id).eq('user_id',user.id).limit(1);
+    if(ch&&ch.length){console.warn('Task Management App sync (delete) skipped: task has children',id);return}
+    const {error}=await client.from('tasks').delete().eq('id',id).eq('user_id',user.id);
+    if(error)console.error('Task Management App sync (delete) failed',error);
+  }catch(e){console.error('Task Management App sync (delete) failed',e)}
+}
+let mgmtReconciling=false;
+async function reconcileMgmtSync(){
+  if(mgmtReconciling||!user)return false;
+  mgmtReconciling=true;
+  try{
+    const {data:mt,error}=await client.from('tasks').select('*').eq('user_id',user.id);
+    if(error){console.error('reconcile: tasks fetch failed',error);return false}
+    const allMgmt=mt||[];
+    let projMap=new Map();
+    try{const {data:projs}=await client.from('projects').select('id,title');(projs||[]).forEach(p=>projMap.set(p.id,p.title))}catch(e){/* 補助情報なので無視 */}
+    const childParents=new Set(allMgmt.filter(t=>t.parent_task_id).map(t=>t.parent_task_id));
+    const pStart=t=>t.planned_start_date||t.start_date;
+    const pEnd=t=>t.planned_end_date||t.end_date||pStart(t);
+    const syncable=t=>!!t&&(!t.category||t.category==='work')&&!t.is_milestone&&!childParents.has(t.id)&&!!pStart(t);
+    const periodTimes=(ts,te,period)=>{const s=ts?String(ts).slice(0,5):null,e=te?String(te).slice(0,5):null;if(s&&e)return[s,e];if(period==='morning')return['09:00','12:00'];if(period==='afternoon')return['13:00','17:00'];return['09:00','17:00']};
+    const toWeekly=(t,base)=>{
+      const [ps,pe]=periodTimes(t.planned_start_time,t.planned_end_time,t.planned_time_period);
+      const row={...(base||{}),id:t.id,user_id:user.id,
+        project_name:t.property_name||(t.project_id?projMap.get(t.project_id):null)||(base?base.project_name:'')||'',
+        description:t.title||'',start_date:pStart(t),end_date:pEnd(t),planned_start:ps,planned_end:pe,completed:t.status==='done'};
+      if(t.start_time&&t.end_time){row.actual_start=String(t.start_time).slice(0,5);row.actual_end=String(t.end_time).slice(0,5)}
+      else if(!base){row.actual_start=null;row.actual_end=null}
+      if(!base){row.subtract_lunch=(ps<='12:00'&&pe>='13:00');row.include_saturday=false;row.include_sunday=false;row.include_holidays=false;row.planned_daily_times={};row.actual_daily_times={}}
+      return row};
+    let changed=false;
+    const weeklyById=new Map(tasks.map(w=>[w.id,w]));
+    const mgmtById=new Map(allMgmt.map(t=>[t.id,t]));
+    const usedWeekly=new Set();
+    // 1) 同じ id のペア: 予定・作業名・物件名は Task 側を正とし、完了はどちらかが完了なら完了にそろえる
+    for(const t0 of allMgmt){
+      if(!syncable(t0))continue;
+      const w=weeklyById.get(t0.id);if(!w)continue;
+      usedWeekly.add(w.id);
+      let t=t0;
+      if(w.completed&&t.status!=='done'){
+        const {error:e0}=await client.from('tasks').update({status:'done',progress:100}).eq('id',t.id).eq('user_id',user.id);
+        if(!e0){t={...t,status:'done',progress:100};mgmtById.set(t.id,t)}
+      }
+      const row=toWeekly(t,w);
+      if(['project_name','description','start_date','end_date','planned_start','planned_end','completed','actual_start','actual_end'].some(k=>String(row[k]??'')!==String(w[k]??''))){
+        const {error:e1}=await client.from('weekly_planner_tasks').upsert(row,{onConflict:'id'});
+        if(!e1)changed=true;else console.error('reconcile upsert failed',e1);
+      }
+    }
+    // 2) id が違う既存ペアの統合 (物件名・作業内容・開始日が一致) と、Task のみの新規反映
+    const keyOfW=w=>`${w.project_name||''}|${w.description||''}|${w.start_date||''}`;
+    const keyOfT=t=>`${t.property_name||(t.project_id?projMap.get(t.project_id):null)||''}|${t.title||''}|${pStart(t)}`;
+    for(const t0 of allMgmt){
+      if(!syncable(t0))continue;
+      if(weeklyById.has(t0.id))continue;
+      let t=t0;
+      const cand=tasks.filter(w=>!usedWeekly.has(w.id)&&!mgmtById.has(w.id)&&keyOfW(w)===keyOfT(t));
+      if(cand.length===1){
+        const w=cand[0];usedWeekly.add(w.id);
+        if(w.completed&&t.status!=='done'){
+          const {error:e0}=await client.from('tasks').update({status:'done',progress:100}).eq('id',t.id).eq('user_id',user.id);
+          if(!e0)t={...t,status:'done',progress:100};
+        }
+        if(w.actual_start&&w.actual_end&&!(t.start_time&&t.end_time)){
+          await client.from('tasks').update({start_time:String(w.actual_start).slice(0,5),end_time:String(w.actual_end).slice(0,5),is_all_day:false,time_period:'custom'}).eq('id',t.id).eq('user_id',user.id);
+          t={...t,start_time:w.actual_start,end_time:w.actual_end};
+        }
+        const row=toWeekly(t,w);
+        row.completed=(t.status==='done')||!!w.completed;
+        await client.from('weekly_planner_tasks').delete().eq('id',w.id).eq('user_id',user.id);
+        const {error:e2}=await client.from('weekly_planner_tasks').insert(row);
+        if(!e2)changed=true;else console.error('reconcile pair insert failed',e2);
+      }else{
+        const {error:e3}=await client.from('weekly_planner_tasks').insert(toWeekly(t,null));
+        if(!e3)changed=true;else console.error('reconcile mgmt-only insert failed',e3);
+      }
+    }
+    // 3) 週間側のみのタスクを Task 側へ作成
+    for(const w of tasks){
+      if(usedWeekly.has(w.id)||mgmtById.has(w.id))continue;
+      await syncWeeklyToMgmt(w.id,w);
+      changed=true;
+    }
+    return changed;
+  }catch(e){console.error('reconcileMgmtSync failed',e);return false}
+  finally{mgmtReconciling=false}
+}
 
 $('export').onclick=()=>{let keys=['project_name','description','start_date','end_date','planned_start','planned_end','actual_start','actual_end','subtract_lunch','completed'];let q=v=>'"'+String(v??'').replaceAll('"','""')+'"';let csv='\ufeff'+[keys.join(','),...tasks.map(t=>keys.map(k=>q(t[k])).join(','))].join('\r\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='weekly_planner_tasks.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 if(URL.startsWith('REPLACE_'))$('loginError').textContent='初期設定が必要です。Supabase URLと公開キーを設定してください。';else{client=createClient(URL,KEY,{auth:{storageKey:'weekly-planner-auth-v2',detectSessionInUrl:false}});$('signIn').onclick=async()=>{let b=$('signIn');b.disabled=true;b.textContent='ログイン中…';$('loginError').textContent='';try{let result=await Promise.race([client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}),new Promise((_,reject)=>setTimeout(()=>reject(new Error('認証処理が15秒以上応答していません。通信状態を確認して再読み込みしてください。')),15000))]);let {error}=result;if(error)$('loginError').textContent=error.message;else $('loginError').textContent='認証に成功しました。画面を切り替えています…'}catch(e){$('loginError').textContent='通信または認証エラー：'+(e.message||String(e))}finally{b.disabled=false;b.textContent='ログイン'}};$('signOut').onclick=()=>client.auth.signOut();client.auth.onAuthStateChange((event,session)=>{let old=user?.id;user=session?.user||null;$('login').classList.toggle('hidden',!!user);$('app').classList.toggle('hidden',!user);if(user&&old!==user.id){reset();setTimeout(load,0)}if(!user)tasks=[]})}
